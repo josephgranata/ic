@@ -297,20 +297,20 @@ impl ResponseHelper {
         paused: PausedResponseHelper,
         clean_canister: &CanisterState,
         original: &OriginalContext,
-        round: &RoundContext,
+        _round: &RoundContext,
         round_limits: &mut RoundLimits,
     ) -> Result<ResponseHelper, (ResponseHelper, HypervisorError)> {
         // We expect the function call to succeed because the call context and
         // the callback have been checked in `execute_response()`.
         // Note that we cannot return an error here because the cleanup callback
         // cannot be invoked without a valid call context and a callback.
-        let (_, _, call_context, _) = common::get_call_context_and_callback(
-            clean_canister,
-            &original.message,
-            round.log,
-            round.counters.unexpected_response_error,
-        )
-        .expect("Failed to resume DTS response: get call context and callback");
+        // let (_, _, call_context, _) = common::get_call_context_and_callback(
+        //     clean_canister,
+        //     &original.message,
+        //     round.log,
+        //     round.counters.unexpected_response_error,
+        // )
+        // .expect("Failed to resume DTS response: get call context and callback");
 
         let mut helper = Self {
             canister: clean_canister.clone(),
@@ -329,9 +329,9 @@ impl ResponseHelper {
         // succeed here too.
         // Note that we cannot return an error here because the cleanup callback
         // cannot be invoked without a valid call context and a callback.
-        helper = helper
-            .validate(&call_context, original, round, round_limits)
-            .expect("Failed to resume DTS response: validation");
+        // helper = helper
+        //     .validate(&call_context, original, round, round_limits)
+        //     .expect("Failed to resume DTS response: validation");
 
         // The cycles balance of the clean canister must not change during the
         // DTS execution.
@@ -717,7 +717,10 @@ impl PausedExecution for PausedResponseExecution {
         )
     }
 
-    fn abort(self: Box<Self>, log: &ReplicaLogger) -> (CanisterMessageOrTask, Cycles) {
+    fn abort(
+        self: Box<Self>,
+        log: &ReplicaLogger,
+    ) -> (CanisterMessageOrTask, Option<Callback>, Cycles) {
         info!(
             log,
             "[DTS] Aborting paused response callback {:?} of canister {}.",
@@ -727,7 +730,11 @@ impl PausedExecution for PausedResponseExecution {
         self.paused_wasm_execution.abort();
         let message = CanisterMessage::Response(self.original.message);
         // No cycles were prepaid for execution during this DTS execution.
-        (CanisterMessageOrTask::Message(message), Cycles::zero())
+        (
+            CanisterMessageOrTask::Message(message),
+            Some(self.original.callback),
+            Cycles::zero(),
+        )
     }
 }
 
@@ -809,7 +816,10 @@ impl PausedExecution for PausedCleanupExecution {
         )
     }
 
-    fn abort(self: Box<Self>, log: &ReplicaLogger) -> (CanisterMessageOrTask, Cycles) {
+    fn abort(
+        self: Box<Self>,
+        log: &ReplicaLogger,
+    ) -> (CanisterMessageOrTask, Option<Callback>, Cycles) {
         info!(
             log,
             "[DTS] Aborting paused cleanup callback {:?} of canister {}.",
@@ -819,7 +829,11 @@ impl PausedExecution for PausedCleanupExecution {
         self.paused_wasm_execution.abort();
         let message = CanisterMessage::Response(self.original.message);
         // No cycles were prepaid for execution during this DTS execution.
-        (CanisterMessageOrTask::Message(message), Cycles::zero())
+        (
+            CanisterMessageOrTask::Message(message),
+            Some(self.original.callback),
+            Cycles::zero(),
+        )
     }
 }
 
@@ -830,8 +844,9 @@ impl PausedExecution for PausedCleanupExecution {
 /// without any changes.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_response(
-    clean_canister: CanisterState,
+    mut clean_canister: CanisterState,
     response: Arc<Response>,
+    callback: Option<Callback>,
     time: Time,
     execution_parameters: ExecutionParameters,
     round: RoundContext,
@@ -843,6 +858,7 @@ pub fn execute_response(
         match common::get_call_context_and_callback(
             &clean_canister,
             &response,
+            callback,
             round.log,
             round.counters.unexpected_response_error,
         ) {
@@ -858,6 +874,11 @@ pub fn execute_response(
                 };
             }
         };
+    clean_canister
+        .system_state
+        .call_context_manager_mut()
+        .unwrap()
+        .unregister_callback(callback_id);
 
     let freezing_threshold = round.cycles_account_manager.freeze_threshold_cycles(
         clean_canister.system_state.freeze_threshold,

@@ -67,7 +67,7 @@ use ic_types::{
         CanisterMessage, CanisterMessageOrTask, CanisterTask, Payload, RejectContext, Request,
         Response, SignedIngressContent, StopCanisterCallId, StopCanisterContext,
     },
-    methods::SystemMethod,
+    methods::{Callback, SystemMethod},
     nominal_cycles::NominalCycles,
     CanisterId, CpuComplexity, Cycles, LongExecutionMode, NumBytes, NumInstructions, SubnetId,
     Time,
@@ -253,7 +253,10 @@ pub trait PausedExecution: std::fmt::Debug + Send {
 
     /// Aborts the paused execution.
     /// Returns the original message and the cycles prepaid for execution.
-    fn abort(self: Box<Self>, log: &ReplicaLogger) -> (CanisterMessageOrTask, Cycles);
+    fn abort(
+        self: Box<Self>,
+        log: &ReplicaLogger,
+    ) -> (CanisterMessageOrTask, Option<Callback>, Cycles);
 }
 
 /// Stores all paused executions keyed by their ids.
@@ -1135,6 +1138,7 @@ impl ExecutionEnvironment {
         instruction_limits: InstructionLimits,
         max_instructions_per_message_without_dts: NumInstructions,
         input: CanisterMessageOrTask,
+        callback: Option<Callback>,
         prepaid_execution_cycles: Option<Cycles>,
         time: Time,
         network_topology: Arc<NetworkTopology>,
@@ -1189,6 +1193,7 @@ impl ExecutionEnvironment {
                 return self.execute_canister_response(
                     canister,
                     response,
+                    callback,
                     instruction_limits,
                     time,
                     network_topology,
@@ -1611,6 +1616,7 @@ impl ExecutionEnvironment {
         &self,
         canister: CanisterState,
         response: Arc<Response>,
+        callback: Option<Callback>,
         instruction_limits: InstructionLimits,
         time: Time,
         network_topology: Arc<NetworkTopology>,
@@ -1653,6 +1659,7 @@ impl ExecutionEnvironment {
         execute_response(
             canister,
             response,
+            callback,
             time,
             execution_parameters,
             round,
@@ -2557,10 +2564,11 @@ impl ExecutionEnvironment {
                     | ExecutionTask::GlobalTimer => task,
                     ExecutionTask::PausedExecution(id) => {
                         let paused = self.take_paused_execution(id).unwrap();
-                        let (input, prepaid_execution_cycles) = paused.abort(log);
+                        let (input, callback, prepaid_execution_cycles) = paused.abort(log);
                         self.metrics.executions_aborted.inc();
                         ExecutionTask::AbortedExecution {
                             input,
+                            callback,
                             prepaid_execution_cycles,
                         }
                     }
@@ -2917,6 +2925,7 @@ pub struct ExecuteCanisterResult {
 /// This is a helper for `execute_canister()`.
 fn execute_canister_input(
     input: CanisterMessageOrTask,
+    callback: Option<Callback>,
     prepaid_execution_cycles: Option<Cycles>,
     exec_env: &ExecutionEnvironment,
     canister: CanisterState,
@@ -2933,6 +2942,7 @@ fn execute_canister_input(
         instruction_limits,
         max_instructions_per_message_without_dts,
         input,
+        callback,
         prepaid_execution_cycles,
         time,
         network_topology,
@@ -2974,7 +2984,11 @@ pub fn execute_canister(
         NextExecution::StartNew | NextExecution::ContinueLong => {}
     }
 
-    let (input, prepaid_execution_cycles) = match canister.system_state.task_queue.pop_front() {
+    let (input, callback, prepaid_execution_cycles) = match canister
+        .system_state
+        .task_queue
+        .pop_front()
+    {
         Some(task) => match task {
             ExecutionTask::PausedExecution(id) => {
                 let paused = exec_env.take_paused_execution(id).unwrap();
@@ -3009,27 +3023,29 @@ pub fn execute_canister(
             }
             ExecutionTask::Heartbeat => {
                 let task = CanisterMessageOrTask::Task(CanisterTask::Heartbeat);
-                (task, None)
+                (task, None, None)
             }
             ExecutionTask::GlobalTimer => {
                 let task = CanisterMessageOrTask::Task(CanisterTask::GlobalTimer);
-                (task, None)
+                (task, None, None)
             }
             ExecutionTask::AbortedExecution {
                 input,
+                callback,
                 prepaid_execution_cycles,
-            } => (input, Some(prepaid_execution_cycles)),
+            } => (input, callback, Some(prepaid_execution_cycles)),
             ExecutionTask::PausedInstallCode(..) | ExecutionTask::AbortedInstallCode { .. } => {
                 unreachable!("The guard at the beginning filters these cases out")
             }
         },
         None => {
             let message = canister.pop_input().unwrap();
-            (CanisterMessageOrTask::Message(message), None)
+            (CanisterMessageOrTask::Message(message), None, None)
         }
     };
     execute_canister_input(
         input,
+        callback,
         prepaid_execution_cycles,
         exec_env,
         canister,

@@ -344,6 +344,7 @@ pub fn execute_update_bench(c: &mut Criterion) {
                 execution_parameters.instruction_limits.message(),
                 CanisterMessageOrTask::Message(ingress),
                 None,
+                None,
                 time,
                 network_topology,
                 &mut round_limits,

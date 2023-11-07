@@ -25,7 +25,7 @@ use ic_types::{CanisterTimer, Cycles, NumBytes, NumInstructions, Time};
 use ic_wasm_types::WasmEngineError::FailedToApplySystemChanges;
 
 use ic_system_api::{ApiType, ExecutionParameters};
-use ic_types::methods::{FuncRef, SystemMethod, WasmMethod};
+use ic_types::methods::{Callback, FuncRef, SystemMethod, WasmMethod};
 
 #[cfg(test)]
 mod tests;
@@ -551,7 +551,10 @@ impl PausedExecution for PausedCallExecution {
         }
     }
 
-    fn abort(self: Box<Self>, log: &ReplicaLogger) -> (CanisterMessageOrTask, Cycles) {
+    fn abort(
+        self: Box<Self>,
+        log: &ReplicaLogger,
+    ) -> (CanisterMessageOrTask, Option<Callback>, Cycles) {
         info!(
             log,
             "[DTS] Aborting {:?} execution of canister {}",
@@ -568,6 +571,10 @@ impl PausedExecution for PausedCallExecution {
             }
             CanisterCallOrTask::Task(task) => CanisterMessageOrTask::Task(task),
         };
-        (message_or_task, self.original.prepaid_execution_cycles)
+        (
+            message_or_task,
+            None,
+            self.original.prepaid_execution_cycles,
+        )
     }
 }

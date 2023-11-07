@@ -16,6 +16,7 @@ use ic_test_utilities::{
 use ic_test_utilities_logger::with_test_replica_logger;
 use ic_test_utilities_tmpdir::tmpdir;
 use ic_types::messages::{CanisterCall, CanisterMessage, CanisterMessageOrTask};
+use ic_types::methods::{Callback, WasmClosure};
 use itertools::Itertools;
 use proptest::prelude::*;
 use std::fs::File;
@@ -202,6 +203,10 @@ fn test_encode_decode_task_queue() {
             .respondent(canister_test_id(42))
             .build(),
     );
+    let wasm_closure = WasmClosure {
+        func_idx: 13,
+        env: 14,
+    };
     let task_queue = vec![
         ExecutionTask::AbortedInstallCode {
             message: CanisterCall::Ingress(Arc::clone(&ingress)),
@@ -210,6 +215,7 @@ fn test_encode_decode_task_queue() {
         },
         ExecutionTask::AbortedExecution {
             input: CanisterMessageOrTask::Message(CanisterMessage::Request(Arc::clone(&request))),
+            callback: None,
             prepaid_execution_cycles: Cycles::new(2),
         },
         ExecutionTask::AbortedInstallCode {
@@ -219,10 +225,22 @@ fn test_encode_decode_task_queue() {
         },
         ExecutionTask::AbortedExecution {
             input: CanisterMessageOrTask::Message(CanisterMessage::Response(Arc::clone(&response))),
+            callback: Some(Callback {
+                call_context_id: 1.into(),
+                originator: Some(canister_test_id(42)),
+                respondent: Some(canister_test_id(43)),
+                cycles_sent: Cycles::new(6),
+                prepayment_for_response_execution: None,
+                prepayment_for_response_transmission: None,
+                on_reply: wasm_closure.clone(),
+                on_reject: wasm_closure,
+                on_cleanup: None,
+            }),
             prepaid_execution_cycles: Cycles::new(4),
         },
         ExecutionTask::AbortedExecution {
             input: CanisterMessageOrTask::Message(CanisterMessage::Ingress(Arc::clone(&ingress))),
+            callback: None,
             prepaid_execution_cycles: Cycles::new(5),
         },
     ];

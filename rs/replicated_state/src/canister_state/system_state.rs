@@ -18,6 +18,7 @@ use ic_protobuf::{
 };
 
 use ic_registry_subnet_type::SubnetType;
+use ic_types::methods::Callback;
 use ic_types::{
     messages::{
         CanisterCall, CanisterMessage, CanisterMessageOrTask, CanisterTask, Ingress, RejectContext,
@@ -446,6 +447,7 @@ pub enum ExecutionTask {
     // there are too many long-running executions.
     AbortedExecution {
         input: CanisterMessageOrTask,
+        callback: Option<Callback>,
         // The execution cost that has already been charged from the canister.
         // Retried execution does not have to pay for it again.
         prepaid_execution_cycles: Cycles,
@@ -477,6 +479,8 @@ impl From<&ExecutionTask> for pb::ExecutionTask {
             }
             ExecutionTask::AbortedExecution {
                 input,
+                // FIXME: Persist the callback.
+                callback: _,
                 prepaid_execution_cycles,
             } => {
                 use pb::execution_task::{
@@ -584,6 +588,8 @@ impl TryFrom<pb::ExecutionTask> for ExecutionTask {
                     .unwrap_or_else(Cycles::zero);
                 ExecutionTask::AbortedExecution {
                     input,
+                    // FIXME: Restore the callback.
+                    callback: None,
                     prepaid_execution_cycles,
                 }
             }

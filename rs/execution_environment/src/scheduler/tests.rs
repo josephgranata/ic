@@ -4999,3 +4999,105 @@ fn test_is_next_method_added_to_task_queue() {
 
     assert_eq!(heartbeat_and_timer_canister_ids, BTreeSet::from([canister]));
 }
+
+/// Ensure that `check_canister_invariants()` works correctly with DTS.
+#[test]
+fn check_canister_invariants_with_dts() {
+    let mut test = SchedulerTestBuilder::new()
+        .with_scheduler_config(SchedulerConfig {
+            scheduler_cores: 2,
+            instruction_overhead_per_message: NumInstructions::from(0),
+            instruction_overhead_per_canister: NumInstructions::from(0),
+            max_instructions_per_round: NumInstructions::from(100),
+            max_instructions_per_message: NumInstructions::from(1000),
+            max_instructions_per_message_without_dts: NumInstructions::from(100),
+            max_instructions_per_slice: NumInstructions::from(100),
+            ..SchedulerConfig::application_subnet()
+        })
+        .with_deterministic_time_slicing()
+        .build();
+
+    let canister = test.create_canister();
+    let message_id = test.send_ingress(canister, ingress(1000));
+
+    test.execute_round(ExecutionRoundType::OrdinaryRound);
+    assert!(test.canister_state(canister).has_paused_execution());
+    test.execute_round(ExecutionRoundType::CheckpointRound);
+    assert!(!test.canister_state(canister).has_paused_execution());
+    assert!(test.canister_state(canister).has_aborted_execution());
+
+    for _ in 0..10 {
+        assert_eq!(test.ingress_state(&message_id), IngressState::Processing);
+        test.execute_round(ExecutionRoundType::OrdinaryRound);
+    }
+    assert_eq!(
+        test.ingress_error(&message_id).code(),
+        ErrorCode::CanisterDidNotReply,
+    );
+    assert_eq!(
+        test.scheduler()
+            .metrics
+            .canister_paused_execution
+            .get_sample_sum(),
+        10.0
+    );
+    assert_eq!(
+        test.scheduler()
+            .metrics
+            .canister_aborted_execution
+            .get_sample_sum(),
+        1.0
+    );
+}
+
+/// Ensure that `check_canister_invariants()` works correctly with DTS installs.
+#[test]
+fn check_canister_invariants_with_dts_install() {
+    let mut test = SchedulerTestBuilder::new()
+        .with_scheduler_config(SchedulerConfig {
+            scheduler_cores: 2,
+            instruction_overhead_per_message: NumInstructions::from(0),
+            instruction_overhead_per_canister: NumInstructions::from(0),
+            max_instructions_per_round: NumInstructions::from(1000),
+            max_instructions_per_install_code: NumInstructions::new(1000),
+            max_instructions_per_install_code_slice: NumInstructions::new(10),
+            ..SchedulerConfig::application_subnet()
+        })
+        .with_deterministic_time_slicing()
+        .build();
+
+    let canister = test.create_canister();
+    let install_code = TestInstallCode::Upgrade {
+        post_upgrade: instructions(100),
+    };
+    test.inject_install_code_call_to_ic00(canister, install_code);
+
+    test.execute_round(ExecutionRoundType::OrdinaryRound);
+    assert!(test.canister_state(canister).has_paused_install_code());
+
+    test.execute_round(ExecutionRoundType::CheckpointRound);
+    assert!(test.canister_state(canister).has_aborted_install_code());
+
+    test.execute_round(ExecutionRoundType::OrdinaryRound);
+    assert!(test.canister_state(canister).has_paused_install_code());
+    for _ in 0..10 {
+        test.execute_round(ExecutionRoundType::OrdinaryRound);
+    }
+    assert!(!test.canister_state(canister).has_paused_install_code());
+    assert!(!test.canister_state(canister).has_aborted_install_code());
+
+    assert_eq!(
+        test.scheduler()
+            .metrics
+            .canister_paused_install_code
+            .get_sample_sum(),
+        10.0
+    );
+    assert_eq!(
+        test.scheduler()
+            .metrics
+            .canister_aborted_install_code
+            .get_sample_sum(),
+        1.0
+    );
+}

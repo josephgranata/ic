@@ -1046,6 +1046,7 @@ impl ExecutionTest {
         let result = self.exec_env.execute_canister_response(
             canister,
             Arc::new(response),
+            None,
             self.instruction_limits.clone(),
             mock_time(),
             network_topology,
