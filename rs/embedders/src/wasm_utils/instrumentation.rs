@@ -429,10 +429,11 @@ pub fn instruction_to_cost(i: &Operator, mem_type: WasmMemoryType) -> u64 {
         Operator::Call { .. } => 5,
         Operator::CallIndirect { .. } => 10,
 
-        // ReturnCall instructions are on average approx. 1.5 times faster than Call
+        // ReturnCall is on average approx. 1.5 times faster than Call
         // instructions (shown by relative benchmarks).
+        // ReturnCallIndirect accesses the table, so it has to be penalized.
         Operator::ReturnCall { .. } => 3,
-        Operator::ReturnCallIndirect { .. } => 6,
+        Operator::ReturnCallIndirect { .. } => 60,
 
         // Return, drop, unreachable and nop instructions are of cost 1.
         Operator::Return { .. } | Operator::Drop | Operator::Unreachable | Operator::Nop => 1,
