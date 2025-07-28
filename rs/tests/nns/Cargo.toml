@@ -10,6 +10,7 @@ documentation.workspace = true
 anyhow = { workspace = true }
 candid = { workspace = true }
 canister-test = { path = "../../rust_canisters/canister_test" }
+ic-utils = { workspace = true }
 ic-agent = { workspace = true }
 ic-btc-interface = { workspace = true }
 ic-base-types = { path = "../../types/base_types" }
@@ -37,8 +38,10 @@ tokio = { workspace = true }
 cycles_minting = { path = "./cycles_minting" }
 cycles-minting-canister = { path = "../../nns/cmc" }
 wat = { workspace = true }
+serde = { workspace = true }
 serde_cbor = { workspace = true }
 on_wire = { path = "../../rust_canisters/on_wire" }
+ic-test-utilities = { path = "../../test_utilities" }
 num-traits = { workspace = true }
 ic-management-canister-types-private = { path = "../../types/management_canister_types" }
 ic-nns-common = { path = "../../nns/common" }
@@ -48,6 +51,7 @@ ic-crypto-utils-threshold-sig-der = { path = "../../crypto/utils/threshold_sig_d
 ic-nervous-system-clients = { path = "../../nervous_system/clients" }
 ic-limits = { path = "../../limits" }
 registry-canister = { path = "../../registry/canister" }
+ic-universal-canister = { path = "../../universal_canister/lib" }
 axum = { workspace = true }
 ic-registry-transport = { path = "../../registry/transport" }
 prost = { workspace = true }

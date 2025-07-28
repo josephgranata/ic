@@ -19,6 +19,7 @@ Success::
 end::catalog[] */
 
 use anyhow::Result;
+use candid::{CandidType, Decode, Encode, Principal};
 use ic_nns_governance_api::ProposalStatus;
 use ic_nns_test_utils::governance::wait_for_final_state;
 use ic_registry_nns_data_provider::registry::RegistryCanister;
@@ -37,7 +38,10 @@ use ic_system_test_driver::systest;
 use ic_system_test_driver::util::{
     assert_create_agent, block_on, runtime_from_url, UniversalCanister,
 };
-use ic_types::{Height, RegistryVersion};
+use ic_test_utilities::universal_canister::{call_args, management, wasm, UNIVERSAL_CANISTER_WASM};
+use ic_types::{CanisterId, Height, RegistryVersion};
+use ic_utils::interfaces::ManagementCanister;
+use serde::{Deserialize, Serialize};
 use slog::info;
 use std::collections::HashSet;
 use std::iter::FromIterator;
@@ -185,10 +189,50 @@ pub fn test(env: TestEnv) {
                 "successfully created agent for endpoint of subnet node"
             );
 
+            #[derive(CandidType, Deserialize, Clone, Debug)]
+            struct SubnetInfoArg {
+                pub subnet_id: Principal,
+            }
+
+            #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+            struct SubnetInfoResponse {
+                pub replica_version: String,
+                pub registry_version: u64,
+            }
+            let arg = SubnetInfoArg {
+                subnet_id: subnet_id.get().into(),
+            };
+            // let mgr = ManagementCanister::create(&agent);
+            // let (SubnetInfoResponse {
+            //     replica_version,
+            //     registry_version,
+            // },) = mgr
+            //     .update("subnet_info")
+            //     .with_arg_raw(Encode!(&arg).unwrap())
+            //     .build()
+            //     .call_and_wait()
+            //     .await
+            //     .unwrap();
+            // println!("### registry_version: {}", registry_version);
+
             let universal_canister =
                 UniversalCanister::new_with_retries(&agent, endpoint.effective_canister_id(), log)
                     .await;
             info!(log, "successfully created a universal canister instance");
+
+            let response = universal_canister
+                .update(wasm().call_simple(
+                    CanisterId::ic_00(),
+                    "subnet_info",
+                    call_args().other_side(Encode!(&arg).unwrap()),
+                ))
+                .await
+                .unwrap();
+            let SubnetInfoResponse {
+                replica_version,
+                registry_version,
+            } = Decode!(&response, SubnetInfoResponse).unwrap();
+            println!("### registry_version: {}", registry_version);
 
             const UPDATE_MSG_1: &[u8] =
                 b"This beautiful prose should be persisted for future generations";
