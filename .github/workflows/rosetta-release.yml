@@ -1,14 +1,7 @@
 name: Rosetta Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      rosetta_release_version:
-        description: 'Rosetta release version'
-        required: false
-      icrc_rosetta_release_version:
-        description: 'ICRC Rosetta release version'
-        required: false
+  push:
 
 permissions:
   contents: write
@@ -32,62 +25,7 @@ jobs:
 
       - name: Login to Docker
         run: |
-          podman login -u ${{ vars.DOCKER_HUB_USER }} -p ${{ secrets.DOCKER_HUB_PASSWORD }} docker.io
+          podman login \
+            --compat-auth-file="$HOME/.docker/config.json" \
+            -u ${{ vars.DOCKER_HUB_USER }} -p ${{ secrets.DOCKER_HUB_PASSWORD }} docker.io
 
-      - name: Configure Git
-        run: |
-          git config --global user.name "IDX GitHub Automation"
-          git config --global user.email "<>"
-
-      - name: Check rosetta release version
-        if: ${{ github.event.inputs.rosetta_release_version }}
-        run: |
-          # - Query the current rosetta version
-          bazel build //rs/rosetta-api/icp:version
-          readonly CURRENT_ROSETTA_VERSION="$(cat "$(bazel cquery --output=files //rs/rosetta-api/icp:version)")"
-
-          # Compare the current Rosetta version with the ROSETTA_RELEASE_VERSION
-          if [ "$CURRENT_ROSETTA_VERSION" != "$ROSETTA_RELEASE_VERSION" ]; then
-            echo "Error: The Bazel query output does not match the rosetta_release_version input."
-            echo "Bazel query output: ${CURRENT_ROSETTA_VERSION}"
-            echo "rosetta_release_version input: ${ROSETTA_RELEASE_VERSION}"
-            exit 1
-          fi
-
-      - name: Check icrc rosetta release version
-        if: ${{ github.event.inputs.icrc_rosetta_release_version }}
-        run: |
-          # - Query the current rosetta version
-          bazel build //rs/rosetta-api/icrc1:version
-          readonly CURRENT_ROSETTA_VERSION="$(cat "$(bazel cquery --output=files //rs/rosetta-api/icrc1:version)")"
-
-          # Compare the current Rosetta version with the ICRC_ROSETTA_RELEASE_VERSION
-          if [ "$CURRENT_ROSETTA_VERSION" != "${ICRC_ROSETTA_RELEASE_VERSION}" ]; then
-            echo "Error: The Bazel query output does not match the rosetta_release_version input."
-            echo "Bazel query output: ${ICRC_ROSETTA_RELEASE_VERSION}"
-            echo "rosetta_release_version input: ${ICRC_ROSETTA_RELEASE_VERSION}"
-            exit 1
-          fi
-
-      - name: Build and publish rosetta image
-        if: ${{ github.event.inputs.rosetta_release_version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          ROSETTA_API_DATE=$(date +"%Y%m%d")
-          for tag in "v${ROSETTA_RELEASE_VERSION}" "${{ github.sha }}" "$ROSETTA_API_DATE" latest; do
-            bazel run --stamp --embed_label="$tag" //rs/rosetta-api/icp:push_rosetta_image
-          done
-          git tag "rosetta-release-$ROSETTA_RELEASE_VERSION" "${{ github.sha }}"
-          git push origin "rosetta-release-$ROSETTA_RELEASE_VERSION"
-
-      - name: Build and publish icrc rosetta image
-        if: ${{ github.event.inputs.icrc_rosetta_release_version  }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for tag in "v${ICRC_ROSETTA_RELEASE_VERSION}" latest; do
-            bazel run --stamp --embed_label="$tag" //rs/rosetta-api/icrc1:push_ic_icrc_rosetta_image
-          done
-          git tag "rosetta-icrc-release-$ICRC_ROSETTA_RELEASE_VERSION" "${{ github.sha }}"
-          git push origin "rosetta-icrc-release-$ICRC_ROSETTA_RELEASE_VERSION"
