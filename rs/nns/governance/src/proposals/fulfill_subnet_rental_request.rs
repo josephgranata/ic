@@ -21,6 +21,7 @@ use registry_canister::mutations::do_create_subnet::{
 };
 use serde::Serialize;
 use std::sync::Arc;
+use subnet_rental_canister::{RentalRequest, CreateRentalAgreementPayload};
 
 const ABSURDLY_LARGE_NUMBER_OF_NODES_IN_A_SUBNET: usize = 1000;
 
@@ -151,14 +152,6 @@ impl FulfillSubnetRentalRequest {
                 )
             })?;
 
-        // TODO(NNS1-3965): Source definition from an official Subnet Rental
-        // canister library.
-        #[derive(CandidType, Deserialize, Serialize)]
-        struct RentalRequest {
-            user: Principal,
-            // The real thing actually has a bunch of other fields, but we only
-            // use `user`, so this is good enough for our purposes...
-        }
         let rental_requests = Decode!(&rental_requests, Vec<RentalRequest>).map_err(|err| {
             GovernanceError::new_with_message(
                 ErrorType::External,
@@ -342,14 +335,6 @@ impl FulfillSubnetRentalRequest {
         let proposal_id = proposal_id.id;
 
         // Assemble the request.
-        // TODO(NNS1-3965): Source definition from an official Subnet Rental
-        // canister library.
-        #[derive(CandidType, Deserialize, Serialize)]
-        struct CreateRentalAgreementPayload {
-            user: Principal,
-            subnet_id: Principal,
-            proposal_id: u64,
-        }
         let request = Encode!(&CreateRentalAgreementPayload {
             user,
             subnet_id,
